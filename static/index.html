@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0a0f0e">
+<link rel="manifest" href="/manifest.json">
+<title>FlightForge</title>
+<style>
+  :root { --bg:#0a0f0e; --accent:#97f766; --accent2:#66d4f7; --text:#e8e8e8; --dim:#9aa0a6; --border:rgba(151,247,102,0.22); --danger:#ff6b6b; --sim:#e8943c; }
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 14px 14px 28px; transition: box-shadow 0.2s; }
+  body.sim-on { box-shadow: inset 0 0 0 3px var(--sim); }
+  h1 { color: var(--accent); text-align: center; font-size: 1.35rem; margin: 6px 0 4px; }
+  .sub { text-align: center; color: var(--dim); font-size: 0.85rem; margin-bottom: 10px; }
+  .card { border: 1px solid var(--border); border-radius: 14px; padding: 14px; margin: 12px 0; background: rgba(255,255,255,0.02); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .btn { background: var(--accent2); color: #041014; border: none; border-radius: 10px; padding: 11px 14px; font-weight: 700; cursor: pointer; flex: 1 1 46%; min-width: 140px; }
+  .btn.secondary { background: #1e2a26; color: var(--accent); border: 1px solid var(--border); }
+  .btn.sim { background: #3a2a18; color: var(--sim); border: 1px solid var(--sim); }
+  .btn.sim.active { background: var(--sim); color: #140a02; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.78rem; border: 1px solid var(--border); color: var(--dim); }
+  .pill.ok { color: var(--accent); border-color: var(--accent); }
+  .pill.bad { color: var(--danger); border-color: var(--danger); }
+  .pill.sim { color: var(--sim); border-color: var(--sim); }
+  .upload-zone { border: 2px dashed var(--border); border-radius: 14px; padding: 22px; text-align: center; cursor: pointer; }
+  .upload-zone input { display: none; }
+  .cli-diff { background: #0c1210; border: 1px solid var(--border); border-radius: 10px; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-word; color: var(--accent); max-height: 260px; overflow: auto; }
+  .copy-btn { float: right; background: var(--accent); color: #000; border: none; border-radius: 8px; padding: 6px 12px; font-weight: 700; cursor: pointer; }
+  .rec-item { padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.9rem; }
+  .ai { color: var(--accent2); font-size: 0.9rem; white-space: pre-wrap; }
+  .timeline { font-size: 0.82rem; color: var(--dim); max-height: 160px; overflow: auto; }
+  .timeline div { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .ws-input { width: 100%; margin-top: 6px; background: #0c1210; color: #eee; border: 1px solid var(--border); padding: 8px 10px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+  <h1>FlightForge</h1>
+  <p class="sub" id="subTag">Phone-first · WebBluetooth · Spark twin</p>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <span id="blePill" class="pill">Link: idle</span>
+      <span id="netPill" class="pill">API: checking…</span>
+      <span id="simPill" class="pill" style="display:none">SIM</span>
+    </div>
+    <div class="row">
+      <button class="btn sim" id="btnSimToggle" type="button">SIM MODE</button>
+    </div>
+    <p style="color:var(--dim);font-size:0.78rem;margin:8px 0 4px">Simulator WebSocket (mock FC on :5051)</p>
+    <input class="ws-input" id="wsUrl" type="text" placeholder="ws://127.0.0.1:5051" value="">
+    <div class="row" style="margin-top:10px">
+      <button class="btn" id="btnBle" type="button">Connect FC</button>
+      <button class="btn secondary" id="btnBleOff" type="button" disabled>Disconnect</button>
+    </div>
+    <p style="color:var(--dim);font-size:0.78rem;margin:10px 0 0">With SIM MODE on, Connect uses WebSocket instead of BLE. Start <code>start_sim.cmd</code> on the PC first.</p>
+  </div>
+
+  <div class="card">
+    <div class="upload-zone" id="dz" onclick="document.getElementById('fi').click()">
+      <input type="file" id="fi" accept=".bfl,.bbl,.csv">
+      <p><strong>Upload log</strong> (BFL / BBL / CSV)</p>
+    </div>
+    <p style="color:var(--dim);font-size:0.82rem;margin-top:10px">Quad name<br>
+      <input id="quad" placeholder="web_quad" style="width:100%;margin-top:6px;background:#0c1210;color:#eee;border:1px solid var(--border);padding:8px 10px;border-radius:8px">
+    </p>
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <div class="row" style="margin-bottom:8px">
+      <div><strong>Heuristic score</strong> <span id="score"></span></div>
+      <div><strong>Objective</strong> <span id="obj"></span></div>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <button class="btn" id="btnAi" type="button">AI analyze (twin)</button>
+      <button class="btn secondary" id="btnApplyPrep" type="button">Prepare apply</button>
+    </div>
+    <div class="card" style="margin:0 0 10px;border-style:dashed">
+      <strong>AI summary</strong>
+      <div id="aiBox" class="ai" style="margin-top:6px">—</div>
+    </div>
+    <div><strong>Recommendations</strong><div id="recs"></div></div>
+    <div style="margin-top:10px"><strong>CLI diff</strong>
+      <button class="copy-btn" type="button" onclick="copyD()">COPY</button>
+      <div style="clear:both"></div>
+      <div class="cli-diff" id="cli"></div>
+    </div>
+    <div style="margin-top:10px"><strong>Next maneuver</strong><pre id="man" style="white-space:pre-wrap;font-size:0.85rem;color:var(--dim)"></pre></div>
+  </div>
+
+  <div class="card">
+    <strong>Flight history</strong>
+    <div id="hist" class="timeline" style="margin-top:8px">Loading…</div>
+    <button class="btn secondary" type="button" id="btnHist" style="margin-top:10px;width:100%">Refresh history</button>
+  </div>
+
+<script type="module">
+import { BtMspBridge } from '/static/bt_msp_bridge.js';
+
+const dz = document.getElementById('dz');
+const fi = document.getElementById('fi');
+let lastReport = null;
+let lastCli = '';
+let bridge = null;
+let simMode = false;
+
+function defaultWsUrl() {
+  const h = typeof location !== 'undefined' ? location.hostname : '127.0.0.1';
+  return `ws://${h}:5051`;
+}
+document.getElementById('wsUrl').placeholder = defaultWsUrl();
+
+function syncSimUi() {
+  document.body.classList.toggle('sim-on', simMode);
+  const t = document.getElementById('btnSimToggle');
+  t.classList.toggle('active', simMode);
+  document.getElementById('simPill').style.display = simMode ? 'inline-block' : 'none';
+  document.getElementById('simPill').classList.toggle('sim', simMode);
+  document.getElementById('subTag').textContent = simMode
+    ? 'SIM MODE · mock FC :5051 · WebSocket MSP'
+    : 'Phone-first · WebBluetooth · Spark twin';
+}
+
+document.getElementById('btnSimToggle').onclick = () => {
+  simMode = !simMode;
+  syncSimUi();
+  if (bridge) {
+    bridge.disconnect();
+    bridge = null;
+    setBle('Link: idle', null);
+    document.getElementById('btnBleOff').disabled = true;
+  }
+};
+syncSimUi();
+
+async function pingApi() {
+  const el = document.getElementById('netPill');
+  try {
+    const r = await fetch('/api/wizard/state', { cache: 'no-store' });
+    el.textContent = r.ok ? 'API: online' : 'API: error';
+    el.classList.toggle('ok', r.ok);
+    el.classList.toggle('bad', !r.ok);
+  } catch {
+    el.textContent = 'API: offline';
+    el.classList.add('bad');
+  }
+}
+
+function setBle(text, ok) {
+  const el = document.getElementById('blePill');
+  el.textContent = text;
+  el.classList.remove('ok', 'bad', 'sim');
+  if (ok === true) el.classList.add('ok');
+  if (ok === false) el.classList.add('bad');
+  if (simMode && ok === true) el.classList.add('sim');
+}
+
+document.getElementById('btnBle').onclick = async () => {
+  try {
+    bridge = new BtMspBridge('');
+    if (simMode) {
+      const u = (document.getElementById('wsUrl').value || '').trim() || defaultWsUrl();
+      await bridge.connectSimulator(u);
+      setBle('WS: simulator', true);
+    } else {
+      await bridge.connect();
+      setBle('BLE: connected', true);
+    }
+    document.getElementById('btnBleOff').disabled = false;
+    try {
+      await bridge.readBoardInfo();
+    } catch (_) {}
+  } catch (e) {
+    setBle(simMode ? 'WS: failed' : 'BLE: failed', false);
+    alert(String(e));
+  }
+};
+document.getElementById('btnBleOff').onclick = () => {
+  if (bridge) bridge.disconnect();
+  bridge = null;
+  setBle('Link: idle', null);
+  document.getElementById('btnBleOff').disabled = true;
+};
+
+fi.onchange = () => { if (fi.files.length) up(fi.files[0]); };
+['dragenter', 'dragover'].forEach((e) => dz.addEventListener(e, (ev) => { ev.preventDefault(); dz.style.borderColor = '#97f766'; }));
+['dragleave', 'drop'].forEach((e) => dz.addEventListener(e, (ev) => { ev.preventDefault(); dz.style.borderColor = ''; }));
+dz.addEventListener('drop', (ev) => { if (ev.dataTransfer.files.length) up(ev.dataTransfer.files[0]); });
+
+async function up(file) {
+  const form = new FormData();
+  form.append('file', file);
+  const q = document.getElementById('quad').value.trim();
+  if (q) form.append('quad', q);
+  try {
+    const r = await fetch('/api/upload', { method: 'POST', body: form });
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('score').textContent = d.overall_score;
+    document.getElementById('obj').textContent = d.objective_score ?? '—';
+    lastReport = d.full_report;
+    lastCli = d.cli_diff || '';
+    const recs = d.recommendations || [];
+    document.getElementById('recs').innerHTML = recs.length
+      ? recs.map((x) => '<div class="rec-item">' + (x.reason || JSON.stringify(x)) + '</div>').join('')
+      : '<p style="color:var(--dim)">None</p>';
+    document.getElementById('cli').textContent = lastCli || '# none';
+    const m = d.maneuver || {};
+    document.getElementById('man').textContent = (m.name || '') + '\n' + (m.detail || []).map((s) => '• ' + s).join('\n');
+    document.getElementById('aiBox').textContent = 'Tap “AI analyze” to call Spark twin.';
+    loadHist();
+  } catch (e) {
+    alert('Upload failed: ' + e);
+  }
+}
+
+window.copyD = function () {
+  navigator.clipboard.writeText(document.getElementById('cli').textContent);
+};
+
+document.getElementById('btnAi').onclick = async () => {
+  if (!lastReport) { alert('Upload a log first'); return; }
+  const quad = document.getElementById('quad').value.trim() || 'web_quad';
+  try {
+    const r = await fetch('/api/bt-analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_report: lastReport, quad }),
+    });
+    const d = await r.json();
+    if (d.error) { alert(d.error); return; }
+    const llm = d.llm || {};
+    const lines = [];
+    if (llm.reasoning) lines.push(llm.reasoning);
+    if (Array.isArray(llm.issues_found)) lines.push('Issues: ' + llm.issues_found.join('; '));
+    if (Array.isArray(llm.recommendations)) {
+      llm.recommendations.forEach((rec) => lines.push((rec.cli_command || '') + ' — ' + (rec.reason || '')));
+    }
+    document.getElementById('aiBox').textContent = lines.join('\n\n') || JSON.stringify(llm, null, 2);
+    document.getElementById('obj').textContent = d.objective_score ?? document.getElementById('obj').textContent;
+  } catch (e) {
+    alert('AI analyze failed: ' + e);
+  }
+};
+
+document.getElementById('btnApplyPrep').onclick = async () => {
+  const cli = document.getElementById('cli').textContent || '';
+  try {
+    const r = await fetch('/api/bt-apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cli_diff: cli }),
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.error || 'failed'); return; }
+    if (bridge && simMode) {
+      try {
+        await bridge.pushCliLines(d.lines || []);
+      } catch (e2) {
+        alert('SIM CLI push: ' + e2);
+      }
+    }
+    alert('Prepared ' + d.line_count + ' CLI lines.' + (simMode ? ' Pushed to simulator.' : ' Push via USB CLI for real FC.'));
+  } catch (e) {
+    alert('Apply prep failed: ' + e);
+  }
+};
+
+async function loadHist() {
+  const box = document.getElementById('hist');
+  try {
+    const r = await fetch('/api/history');
+    const d = await r.json();
+    const flights = d.flights || [];
+    box.innerHTML = flights.length
+      ? flights.map((f) => '<div><code>' + (f.id || '') + '</code> · score ' + (f.score ?? '—') + ' · ' + (f.day || '') + '</div>').join('')
+      : '<div>No flights yet</div>';
+  } catch {
+    box.textContent = 'History unavailable';
+  }
+}
+document.getElementById('btnHist').onclick = loadHist;
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+pingApi();
+loadHist();
+</script>
+</body>
+</html>
