@@ -26,6 +26,12 @@ No laptop needed. No manual tuning spreadsheets. Your quad tunes itself.
 - **Simulator** — Mock FC + synthetic flights for testing without hardware
 - **PWA** — Install on your phone's home screen
 
+## Status
+
+**Alpha — built in under 24 hours.** The core signal analysis, MSP protocol, and LLM integration work. The WebBluetooth bridge and simulator have been smoke-tested but not field-tested with real hardware yet. Expect rough edges.
+
+We're shipping early because we believe in building in public. PRs, bug reports, and flight data are all welcome.
+
 ## Quick Start
 
 ### Requirements
